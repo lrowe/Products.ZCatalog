@@ -311,10 +311,3 @@ class CatalogPlan(object):
             rval.append(info)
 
         return rval
-
-
-# Make sure we provide test isolation
-from zope.testing.cleanup import addCleanUp
-addCleanUp(PriorityMap.clear)
-addCleanUp(Reports.clear)
-del addCleanUp

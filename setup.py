@@ -14,6 +14,8 @@
 
 from setuptools import setup, find_packages
 
+tests_require = ['zope.testing']
+
 setup(name='Products.ZCatalog',
       version = '2.13.22dev',
       url='http://pypi.python.org/pypi/Products.ZCatalog',
@@ -44,8 +46,9 @@ setup(name='Products.ZCatalog',
         'zope.dottedname',
         'zope.interface',
         'zope.schema',
-        'zope.testing',
       ],
+      tests_require=tests_require,
+      extras_require={'test': tests_require, },
       include_package_data=True,
       zip_safe=False,
       )

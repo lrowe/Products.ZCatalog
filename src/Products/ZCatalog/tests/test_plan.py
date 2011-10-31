@@ -368,3 +368,9 @@ class TestCatalogReport(cleanup.CleanUp, unittest.TestCase):
 
         self.assertEqual(r['query'], key)
         self.assertEqual(r['counter'], 2)
+
+
+# Make sure we provide test isolation
+from Products.ZCatalog import plan
+cleanup.addCleanUp(plan.PriorityMap.clear)
+cleanup.addCleanUp(plan.Reports.clear)
