@@ -14,7 +14,8 @@
 
 from setuptools import setup, find_packages
 
-tests_require = ['zope.testing']
+tests_require = ['zope.testing',
+                 'plone.testing']
 
 setup(name='Products.ZCatalog',
       version = '2.13.22dev',
