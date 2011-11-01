@@ -87,6 +87,7 @@ class TestZCatalog(unittest.TestCase):
         # Query the catalog from a new ZODB connection
         # and check everything is working
         with z2.zopeApp() as app:
+            self.assertTrue(app._p_jar is not self.app._p_jar)
             catalog = app['catalog']
             foo_brains = catalog(id=foo_folder.id)
             self.assertEqual(len(foo_brains), 1)
