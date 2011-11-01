@@ -28,7 +28,9 @@ class ZCatalogLayer(testing.Layer):
             ZCatalog.manage_addZCatalog(
                 app, id='catalog', title='Catalog')
             self['app'] = app
-            self['catalog'] = app['catalog']
+            self['catalog'] = catalog = app['catalog']
+            id_ = FieldIndex.FieldIndex('id')
+            catalog.addIndex('id', id_)
         
     def tearDown(self):
         del self['catalog']
@@ -46,8 +48,6 @@ class TestZCatalog(unittest.TestCase):
     def setUp(self):
         self.app = self.layer['app']
         self.catalog = self.layer['catalog']
-        id_ = FieldIndex.FieldIndex('id')
-        self.catalog.addIndex('id', id_)
 
     def test_addAndCommit(self):
         """
