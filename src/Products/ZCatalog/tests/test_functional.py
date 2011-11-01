@@ -6,7 +6,6 @@ import unittest
 
 import transaction
 
-from plone import testing
 from plone.testing import z2
 from plone.testing import zodb
 
@@ -18,25 +17,16 @@ from Products.ZCatalog import ZCatalog
 from Products.PluginIndexes.FieldIndex import FieldIndex
 
 
-class ZCatalogLayer(testing.Layer):
+class ZCatalogLayer(z2.FunctionalTesting):
     defaultBases = (z2.FUNCTIONAL_TESTING,)
     
     def setUp(self):
-        self['zodbDB'] = zodb.stackDemoStorage(
-            self.get('zodbDB'), name='MyLayer')
         with z2.zopeApp() as app:
             ZCatalog.manage_addZCatalog(
                 app, id='catalog', title='Catalog')
-            self['app'] = app
-            self['catalog'] = catalog = app['catalog']
+            catalog = app['catalog']
             id_ = FieldIndex.FieldIndex('id')
             catalog.addIndex('id', id_)
-        
-    def tearDown(self):
-        del self['catalog']
-        del self['app']
-        self['zodbDB'].close()
-        del self['zodbDB']
 
 ZCATALOG_FIXTURE = ZCatalogLayer()
 
@@ -47,7 +37,7 @@ class TestZCatalog(unittest.TestCase):
 
     def setUp(self):
         self.app = self.layer['app']
-        self.catalog = self.layer['catalog']
+        self.catalog = self.app['catalog']
 
     def test_addAndCommit(self):
         """
