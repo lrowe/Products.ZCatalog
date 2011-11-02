@@ -200,7 +200,7 @@ class TestCatalog(CatalogBase, unittest.TestCase):
         self.d = {}
         for x in range(0, self.upper):
             self.d[x] = dummy(self.nums[x])
-            self._catalog.catalogObject(self.d[x], repr(x))
+            self._catalog.catalogObject(self.d[x])
         self._catalog = self._catalog.__of__(dummy('foo'))
 
     # clear
@@ -213,14 +213,14 @@ class TestCatalog(CatalogBase, unittest.TestCase):
 
     def testCatalogObjectUpdateMetadataFalse(self):
         ob = dummy(9999)
-        self._catalog.catalogObject(ob, `9999`)
+        self._catalog.catalogObject(ob)
         brain = self._catalog(num=9999)[0]
         self.assertEqual(brain.att1, 'att1')
         ob.att1 = 'foobar'
-        self._catalog.catalogObject(ob, `9999`, update_metadata=0)
+        self._catalog.catalogObject(ob, update_metadata=0)
         brain = self._catalog(num=9999)[0]
         self.assertEqual(brain.att1, 'att1')
-        self._catalog.catalogObject(ob, `9999`)
+        self._catalog.catalogObject(ob)
         brain = self._catalog(num=9999)[0]
         self.assertEqual(brain.att1, 'foobar')
 
@@ -522,7 +522,7 @@ class TestRangeSearch(CatalogBase, unittest.TestCase):
 
         for i in range(5000):
             obj = objRS(random.randrange(0, 20000))
-            self._catalog.catalogObject(obj, i)
+            self._catalog.catalogObject(obj)
 
         self._catalog = self._catalog.__of__(objRS(200))
 
@@ -550,7 +550,7 @@ class TestCatalogReturnAll(CatalogBase, unittest.TestCase):
         col1 = FieldIndex('col1')
         self._catalog.addIndex('col1', col1)
         for x in range(0, 10):
-            self._catalog.catalogObject(dummy(x), repr(x))
+            self._catalog.catalogObject(dummy(x))
         self.assertEqual(len(self._catalog), 10)
         length = len(self._catalog({}))
         self.assertEqual(length, 10)
@@ -633,7 +633,7 @@ class TestMergeResults(CatalogBase, unittest.TestCase):
                 obj = zdummy(i)
                 obj.big = i > 5
                 obj.number = True
-                cat.catalogObject(obj, str(i))
+                cat.catalogObject(obj)
             self.catalogs.append(cat)
 
     def testNoFilterOrSort(self):
@@ -721,7 +721,7 @@ class TestScoring(CatalogBase, unittest.TestCase):
             obj.true = True
             if i == 110:
                 obj.true = False
-            cat.catalogObject(obj, str(i))
+            cat.catalogObject(obj)
 
     def test_simple_search(self):
         cat = self._get_catalog()

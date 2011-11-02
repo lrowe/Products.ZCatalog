@@ -49,6 +49,7 @@ from ZODB.POSException import ConflictError
 from zope.interface import implements
 
 from Products.ZCatalog.Catalog import Catalog, CatalogError
+from Products.ZCatalog.Catalog import _deprecated
 from Products.ZCatalog.interfaces import IZCatalog
 from Products.ZCatalog.ProgressHandler import ZLogHandler
 from Products.ZCatalog.ZCatalogIndexes import ZCatalogIndexes
@@ -455,9 +456,9 @@ class ZCatalog(Folder, Persistent, Implicit):
                 '?manage_tabs_message=Reindexing%20Performed')
 
     security.declareProtected(manage_zcatalog_entries, 'catalog_object')
-    def catalog_object(self, obj, idxs=None, update_metadata=1,
-                       pghandler=None):
-        self._catalog.catalogObject(obj, None, idxs,
+    def catalog_object(self, obj, uid=_deprecated, idxs=None,
+                       update_metadata=1, pghandler=None):
+        self._catalog.catalogObject(obj, uid, idxs,
                                     update_metadata=update_metadata)
         # None passed in to catalogObject as third argument indicates
         # that we shouldn't try to commit subtransactions within any

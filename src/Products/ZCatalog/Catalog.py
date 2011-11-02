@@ -37,6 +37,8 @@ from .plan import CatalogPlan
 
 LOG = logging.getLogger('Zope.ZCatalog')
 
+_deprecated = object()
+
 
 def safe_callable(ob):
     # Works with ExtensionClasses and Acquisition.
@@ -276,8 +278,8 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
 
     # the cataloging API
 
-    def catalogObject(self, object, threshold=None, idxs=None,
-                      update_metadata=1):
+    def catalogObject(self, object, uid=_deprecated, threshold=None,
+                      idxs=None, update_metadata=1):
         """
         Adds an object to the Catalog by iteratively applying it to
         all indexes.
@@ -292,6 +294,9 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
         no effect (metadata is always created for new objects).
 
         """
+        if uid is not _deprecated:
+            raise ValueError(
+                'The catalog now uses intids and no longer accepts uids.')
 
         if idxs is None:
             idxs = []
