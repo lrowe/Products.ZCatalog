@@ -503,7 +503,8 @@ class ZCatalog(Folder, Persistent, Implicit):
     def getpath(self, rid):
         # Return the path to a cataloged object given a 'data_record_id_'
         path_index = self.Indexes.get('path')
-        if path_index is None or not hasattr(path_index.getEntryForObject):
+        if path_index is None or not hasattr(
+            path_index, 'getEntryForObject'):
             warnings.warn(
                 'No compatible path index available, resolving object '
                 'for rid %r which may be expensive' % rid)
