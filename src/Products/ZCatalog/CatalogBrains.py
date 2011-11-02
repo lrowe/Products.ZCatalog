@@ -48,7 +48,8 @@ class AbstractCatalogBrain(Record, Implicit):
 
     def getPath(self):
         """Get the physical path for this record"""
-        return aq_parent(self).getpath(self.data_record_id_)
+        parent = aq_parent(self)
+        return parent.getpath(self.data_record_id_)
 
     def getURL(self, relative=0):
         """Generate a URL for this record"""
@@ -63,15 +64,7 @@ class AbstractCatalogBrain(Record, Implicit):
         Same as getObject, but does not do security checks.
         """
         parent = aq_parent(self)
-        if (aq_get(parent, 'REQUEST', None) is None
-            and _GLOBALREQUEST_INSTALLED):
-            request = getRequest()
-            if request is not None:
-                # path should be absolute, starting at the physical root
-                parent = self.getPhysicalRoot()
-                request_container = RequestContainer(REQUEST=request)
-                parent = aq_base(parent).__of__(request_container)
-        return parent.unrestrictedTraverse(self.getPath())
+        return parent.getobject(self.data_record_id_)
 
     def getObject(self, REQUEST=None):
         """Return the object for this record

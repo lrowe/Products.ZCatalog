@@ -5,14 +5,20 @@ Functional tests covering the catalog in a Zope2 stack.
 import unittest
 
 import transaction
+from zope import component
+from zope import intid
+from zope.configuration import xmlconfig
 
 from plone.testing import z2
-from plone.testing import zodb
 
 from Acquisition import aq_base
 from OFS import Folder
 from OFS import SimpleItem
+from Products.Five.component import browser
+from AccessControl.SecurityManagement import newSecurityManager
+from AccessControl.SecurityManagement import SpecialUsers
 
+import five.intid
 from Products.ZCatalog import ZCatalog
 from Products.PluginIndexes.FieldIndex import FieldIndex
 
@@ -22,6 +28,15 @@ class ZCatalogLayer(z2.FunctionalTesting):
     
     def setUp(self):
         with z2.zopeApp() as app:
+
+            # Set up intids
+            xmlconfig.file('overrides.zcml', package=five.intid,
+                           context=self['configurationContext'])
+            browser.ObjectManagerSiteView(app, None).makeSite()
+            sm = app.getSiteManager()
+            sm.registerUtility(intid.IntIds(), intid.IIntIds)
+
+            # Add a catalog and index
             ZCatalog.manage_addZCatalog(
                 app, id='catalog', title='Catalog')
             catalog = app['catalog']
@@ -52,13 +67,26 @@ class TestZCatalog(unittest.TestCase):
         bar_item = SimpleItem.SimpleItem()
         bar_item.id = 'bar_item'
         foo_folder._setObject('bar_item', bar_item)
-        bar_item = foo_folder['bar_item']
 
-        # Add the folder to the ZODB and catalog both items
+        # Add the folder to the ZODB
         self.app._setObject('foo_folder', foo_folder)
         foo_folder = self.app['foo_folder']
+        bar_item = foo_folder['bar_item']
+
+        # Register one item for an intid before catalogging but not
+        # the other
+        intids = component.getUtility(intid.IIntIds, context=self.app)
+        bar_id = intids.register(bar_item)
+        self.assertEqual(intids.queryId(foo_folder), None)
+
+        # Catalog both items
         self.catalog.catalog_object(foo_folder)
         self.catalog.catalog_object(bar_item)
+
+        # Once catalogged, the items have intid's, if already
+        # registered the existing intid i
+        foo_id = intids.getId(foo_folder)
+        self.assertEqual(intids.getId(bar_item), bar_id)
 
         # Commit all the changes to this ZODB connection
         transaction.commit()
@@ -73,6 +101,8 @@ class TestZCatalog(unittest.TestCase):
                         is aq_base(foo_folder))
         self.assertTrue(aq_base(bar_brains[0].getObject())
                         is aq_base(bar_item))
+        self.assertEqual(intids.getId(foo_folder), foo_id)
+        self.assertEqual(intids.getId(bar_item), bar_id)
 
         # Query the catalog from a new ZODB connection
         # and check everything is working
@@ -87,6 +117,20 @@ class TestZCatalog(unittest.TestCase):
                              foo_folder._p_oid)
             self.assertEqual(bar_brains[0].getObject()._p_oid,
                              bar_item._p_oid)
+
+            new_intids = component.getUtility(intid.IIntIds, context=app)
+            self.assertEqual(new_intids.getId(foo_folder), foo_id)
+            self.assertEqual(new_intids.getId(bar_item), bar_id)
+
+        # When an item is renamed, it's intid and those of all
+        # contained in the item are preserved
+        newSecurityManager(None, SpecialUsers.system)
+        self.app.manage_renameObjects(['foo_folder'], ['qux_folder'])
+        z2.logout()
+        foo_folder = self.app['qux_folder']
+        bar_item = foo_folder['bar_item']
+        self.assertEqual(intids.getId(foo_folder), foo_id)
+        self.assertEqual(intids.getId(bar_item), bar_id)
         
 
 def test_suite():

@@ -15,7 +15,9 @@ import types
 import logging
 import warnings
 from bisect import bisect
-from random import randint
+
+from zope import component
+from zope import intid
 
 import Acquisition
 from Acquisition import aq_base
@@ -28,7 +30,6 @@ from Products.PluginIndexes.interfaces import ILimitedResultIndex
 import BTrees.Length
 from BTrees.IIBTree import intersection, IISet
 from BTrees.IIBTree import weightedIntersection
-from BTrees.OIBTree import OIBTree
 from BTrees.IOBTree import IOBTree
 from Lazy import LazyMap, LazyCat, LazyValues
 from CatalogBrains import AbstractCatalogBrain, NoBrainer
@@ -76,9 +77,7 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
         # are turned into brain objects and returned by
         # searchResults.  The indexing machinery indexes all records
         # by an integer id (rid). self.data is a mapping from the
-        # integer id to the meta_data, self.uids is a mapping of the
-        # object unique identifier to the rid, and self.paths is a
-        # mapping of the rid to the unique identifier.
+        # integer id to the meta_data.
 
         self.clear()
 
@@ -94,8 +93,6 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
         """ clear catalog """
 
         self.data = IOBTree()  # mapping of rid to meta_data
-        self.uids = OIBTree()  # mapping of uid to rid
-        self.paths = IOBTree()  # mapping of rid to uid
         self._length = BTrees.Length.Length()
 
         for index in self.indexes.keys():
@@ -263,44 +260,29 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
         """ get an index wrapped in the catalog """
         return self.indexes[name].__of__(self)
 
-    def updateMetadata(self, object, uid, index):
-        """ Given an object and a uid, update the column data for the
-        uid with the object data iff the object has changed """
+    def updateMetadata(self, object):
+        """ Given an object, update the column data for the objects's
+        intid with the object data iff the object has changed"""
         data = self.data
         newDataRecord = self.recordify(object)
 
-        if index is None:
-            index = getattr(self, '_v_nextid', 0)
-            if index % 4000 == 0:
-                index = randint(-2000000000, 2000000000)
-            while not data.insert(index, newDataRecord):
-                index = randint(-2000000000, 2000000000)
+        intids = component.getUtility(intid.IIntIds, context=self)
+        rid = intids.register(object)
 
-            # We want ids to be somewhat random, but there are
-            # advantages for having some ids generated
-            # sequentially when many catalog updates are done at
-            # once, such as when reindexing or bulk indexing.
-            # We allocate ids sequentially using a volatile base,
-            # so different threads get different bases. This
-            # further reduces conflict and reduces churn in
-            # here and it result sets when bulk indexing.
-            self._v_nextid = index + 1
-        else:
-            if data.get(index, 0) != newDataRecord:
-                data[index] = newDataRecord
-        return index
+        if data.get(rid, 0) != newDataRecord:
+            data[rid] = newDataRecord
+
+        return rid
 
     # the cataloging API
 
-    def catalogObject(self, object, uid, threshold=None, idxs=None,
+    def catalogObject(self, object, threshold=None, idxs=None,
                       update_metadata=1):
         """
         Adds an object to the Catalog by iteratively applying it to
         all indexes.
 
         'object' is the object to be cataloged
-
-        'uid' is the unique Catalog identifier for this object
 
         If 'idxs' is specified (as a sequence), apply the object only
         to the named indexes.
@@ -314,16 +296,14 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
         if idxs is None:
             idxs = []
 
-        index = self.uids.get(uid, None)
-
-        if index is None:  # we are inserting new data
-            index = self.updateMetadata(object, uid, None)
+        intids = component.getUtility(intid.IIntIds, context=self)
+        rid = intids.queryId(object)
+        if rid is None:  # we are inserting new data
+            rid = self.updateMetadata(object)
             self._length.change(1)
-            self.uids[uid] = index
-            self.paths[index] = uid
 
         elif update_metadata:  # we are updating and we need to update metadata
-            self.updateMetadata(object, uid, index)
+            self.updateMetadata(object)
 
         # do indexing
         total = 0
@@ -336,7 +316,7 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
         for name in use_indexes:
             x = self.getIndex(name)
             if hasattr(x, 'index_object'):
-                blah = x.index_object(index, object, threshold)
+                blah = x.index_object(rid, object, threshold)
                 total = total + blah
             else:
                 LOG.error('catalogObject was passed bad index '
@@ -344,23 +324,27 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
 
         return total
 
-    def uncatalogObject(self, uid):
+    def uncatalogObject(self, rid):
         """
-        Uncatalog and object from the Catalog.  and 'uid' is a unique
-        Catalog identifier
+        Uncatalog an object from the Catalog and 'rid' is a unique
+        intid identifier.
 
-        Note, the uid must be the same as when the object was
+        Note, the rid must be the same as when the object was
         catalogued, otherwise it will not get removed from the catalog
 
-        This method should not raise an exception if the uid cannot
+        This method should not raise an exception if the rid cannot
         be found in the catalog.
 
         """
         data = self.data
-        uids = self.uids
-        paths = self.paths
+
+        if not isinstance(rid, (int, long)):
+            intids = component.getUtility(intid.IIntIds, context=self)
+            rid = intids.queryId(rid)
+        elif rid not in data:
+            rid = None
+            
         indexes = self.indexes.keys()
-        rid = uids.get(uid, None)
 
         if rid is not None:
             for name in indexes:
@@ -368,23 +352,17 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
                 if hasattr(x, 'unindex_object'):
                     x.unindex_object(rid)
             del data[rid]
-            del paths[rid]
-            del uids[uid]
             self._length.change(-1)
 
         else:
             LOG.error('uncatalogObject unsuccessfully '
                       'attempted to uncatalog an object '
-                      'with a uid of %s. ' % str(uid))
+                      'with a intid of %s. ' % str(rid))
 
 
     def uniqueValuesFor(self, name):
         """ return unique values for FieldIndex name """
         return self.getIndex(name).uniqueValues()
-
-    def hasuid(self, uid):
-        """ return the rid if catalog contains an object with uid """
-        return self.uids.get(uid)
 
     def recordify(self, object):
         """ turns an object into a record tuple """
@@ -665,7 +643,7 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
                     actual_result_count=None, b_start=0, b_size=None):
         # Sort a result set using a sort index. Return a lazy
         # result set in sorted order if merge is true otherwise
-        # returns a list of (sortkey, uid, getter_function) tuples
+        # returns a list of (sortkey, rid, getter_function) tuples
         #
         # The two 'for' loops in here contribute a significant
         # proportion of the time to perform an indexed search.

@@ -1,9 +1,13 @@
 Changelog
 =========
 
-2.13.22 (unreleased)
+4.0     (unreleased)
 --------------------
 
+- Replace ZCatalog internals from using paths and it's own rids to
+  just use zope.intid.  Currently requires the compatibility provided
+  by five.intid.
+  [rossp] 
 
 2.13.21 (2011-10-20)
 --------------------

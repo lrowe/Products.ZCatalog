@@ -15,12 +15,17 @@
 
 import unittest
 
+from zope import component
+from zope import intid
+
 from AccessControl.SecurityManagement import setSecurityManager
 from AccessControl.SecurityManagement import noSecurityManager
 from AccessControl import Unauthorized
 from Acquisition import Implicit
 import ExtensionClass
 from OFS.Folder import Folder as OFS_Folder
+
+from Products.ZCatalog import testing
 
 
 class Folder(OFS_Folder):
@@ -99,6 +104,8 @@ class PickySecurityManager:
 
 class ZCatalogBase(object):
 
+    layer = testing.layer
+
     def _makeOne(self):
         from Products.ZCatalog.ZCatalog import ZCatalog
         return ZCatalog('Catalog')
@@ -129,10 +136,9 @@ class TestZCatalog(ZCatalogBase, unittest.TestCase):
         self.upper = 10
         self.d = {}
         for x in range(0, self.upper):
-            # make uid a string of the number
             ob = zdummy(x)
             self.d[str(x)] = ob
-            self._catalog.catalog_object(ob, str(x))
+            self._catalog.catalog_object(ob)
 
     def _resolve_num(self, num):
         return self.d[num]
@@ -167,14 +173,18 @@ class TestZCatalog(ZCatalogBase, unittest.TestCase):
     def testBooleanEvalOn_refreshCatalog_getobject(self):
         # wrap catalog under the fake parent providing unrestrictedTraverse()
         catalog = self._catalog.__of__(fakeparent(self.d))
-        # replace entries to test refreshCatalog
-        self.d['0'] = dummyLenFail(0, self.fail)
-        self.d['1'] = dummyNonzeroFail(1, self.fail)
+        for key, value in {'0': dummyLenFail(0, self.fail),
+                           '1': dummyNonzeroFail(1, self.fail)}.items():
+            # replace entries to test refreshCatalog
+            intids = component.getUtility(intid.IIntIds, context=self)
+            intids.replace(self.d[key], value)
+            self.d[key] = value
+        
         # this next call should not fail
         catalog.refreshCatalog()
 
-        for uid in ('0', '1'):
-            rid = catalog.getrid(uid)
+        for key in ('0', '1'):
+            rid = catalog.getrid(self.d[key])
             # neither should these
             catalog.getobject(rid)
 
@@ -189,7 +199,8 @@ class TestZCatalog(ZCatalogBase, unittest.TestCase):
     def testReindexIndexDoesntDoMetadata(self):
         self.d['0'].num = 9999
         self._catalog.reindexIndex('title', {})
-        data = self._catalog.getMetadataForUID('0')
+        data = self._catalog.getMetadataForRID(
+            self._catalog.getrid(self.d['0']))
         self.assertEqual(data['title'], '0')
 
     def testReindexIndexesFalse(self):
@@ -197,7 +208,7 @@ class TestZCatalog(ZCatalogBase, unittest.TestCase):
         false_id = self.upper + 1
         ob = zdummyFalse(false_id)
         self.d[str(false_id)] = ob
-        self._catalog.catalog_object(ob, str(false_id))
+        self._catalog.catalog_object(ob)
         # test, object evaluates to false; there was bug which caused the
         # object to be removed from index
         ob.num = 9999
@@ -212,54 +223,42 @@ class TestZCatalog(ZCatalogBase, unittest.TestCase):
     # getpath
     # getrid
 
-    def test_getobject_traversal(self):
-        # getobject doesn't mask TraversalErrors and doesn't delegate to
-        # resolve_url
-        # wrap catalog under the fake parent providing unrestrictedTraverse()
-        catalog = self._catalog.__of__(fakeparent(self.d))
-        # make resolve_url fail if ZCatalog falls back on it
-        def resolve_url(path, REQUEST):
-            self.fail(".resolve_url() should not be called by .getobject()")
-        catalog.resolve_url = resolve_url
-
-        # traversal should work at first
-        rid0 = catalog.getrid('0')
-        # lets set it up so the traversal fails
-        del self.d['0']
-        self.assertRaises(FakeTraversalError,
-                          catalog.getobject, rid0, REQUEST=object())
-        # and if there is a None at the traversal point, that's where it
-        # should return
-        self.d['0'] = None
-        self.assertEquals(catalog.getobject(rid0), None)
-
-    def testGetMetadataForUID(self):
+    def testGetMetadataForRID(self):
         testNum = str(self.upper - 3) # as good as any..
-        data = self._catalog.getMetadataForUID(testNum)
+        data = self._catalog.getMetadataForRID(
+            self._catalog.getrid(self.d[testNum]))
         self.assertEqual(data['title'], testNum)
 
-    def testGetIndexDataForUID(self):
+    def testGetIndexDataForRID(self):
         testNum = str(self.upper - 3)
-        data = self._catalog.getIndexDataForUID(testNum)
+        data = self._catalog.getIndexDataForRID(
+            self._catalog.getrid(self.d[testNum]))
         self.assertEqual(data['title'][0], testNum)
 
     def testUpdateMetadata(self):
-        self._catalog.catalog_object(zdummy(1), '1')
-        data = self._catalog.getMetadataForUID('1')
-        self.assertEqual(data['title'], '1')
-        self._catalog.catalog_object(zdummy(2), '1', update_metadata=0)
-        data = self._catalog.getMetadataForUID('1')
-        self.assertEqual(data['title'], '1')
-        self._catalog.catalog_object(zdummy(2), '1', update_metadata=1)
-        data = self._catalog.getMetadataForUID('1')
-        self.assertEqual(data['title'], '2')
-        # update_metadata defaults to true, test that here
-        self._catalog.catalog_object(zdummy(1), '1')
-        data = self._catalog.getMetadataForUID('1')
+        dummy = zdummy(1)
+        self._catalog.catalog_object(dummy)
+        data = self._catalog.getMetadataForRID(
+            self._catalog.getrid(dummy))
         self.assertEqual(data['title'], '1')
 
-    # getMetadataForRID
-    # getIndexDataForRID
+        dummy.num = 2
+        self._catalog.catalog_object(dummy, update_metadata=0)
+        data = self._catalog.getMetadataForRID(
+            self._catalog.getrid(dummy))
+        self.assertEqual(data['title'], '1')
+        self._catalog.catalog_object(dummy, update_metadata=1)
+        data = self._catalog.getMetadataForRID(
+            self._catalog.getrid(dummy))
+        self.assertEqual(data['title'], '2')
+        
+        # update_metadata defaults to true, test that here
+        dummy.num = 1
+        self._catalog.catalog_object(dummy)
+        data = self._catalog.getMetadataForRID(
+            self._catalog.getrid(dummy))
+        self.assertEqual(data['title'], '1')
+
     # schema
     # indexes
     # index_objects
@@ -284,7 +283,6 @@ class TestZCatalog(ZCatalogBase, unittest.TestCase):
 
     # resolve_url
     # resolve_path
-    # manage_normalize_paths
     # manage_setProgress
     # _getProgressThreshold
 
@@ -306,7 +304,7 @@ class TestAddDelColumnIndex(ZCatalogBase, unittest.TestCase):
         idx = self._catalog._catalog.getIndex('title')
         for x in range(10):
             ob = zdummy(x)
-            self._catalog.catalog_object(ob, str(x))
+            self._catalog.catalog_object(ob)
         self.assertEquals(len(idx), 10)
         self._catalog.clearIndex('title')
         self.assertEquals(len(idx), 0)
@@ -415,18 +413,6 @@ class TestZCatalogGetObject(ZCatalogBase, unittest.TestCase):
         pickySecurityManager = PickySecurityManager(['fold'])
         setSecurityManager(pickySecurityManager)
         self.assertEqual(brain._unrestrictedGetObject().getId(), 'ob')
-
-    def test_unrestrictedGetObject_missing_raises_NotFound(self):
-        # Check that if the object is missing we raise
-        from zExceptions import NotFound
-        root = self.root
-        catalog = root.catalog
-        root.ob = Folder('ob')
-        catalog.catalog_object(root.ob)
-        brain = catalog.searchResults({'id': 'ob'})[0]
-        del root.ob
-        self.assertRaises((NotFound, AttributeError, KeyError),
-                          brain._unrestrictedGetObject)
 
 
 def test_suite():

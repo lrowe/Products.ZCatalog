@@ -17,6 +17,8 @@ import unittest
 
 from zope.testing import cleanup
 
+from Products.ZCatalog import testing
+
 
 class dummy(object):
 
@@ -285,17 +287,18 @@ class TestCatalogPlan(cleanup.CleanUp, unittest.TestCase):
     # Test the actual logic for determining value indexes
     # Test make_key
 
-class TestCatalogReport(cleanup.CleanUp, unittest.TestCase):
+class TestCatalogReport(unittest.TestCase):
+
+    layer = testing.layer
 
     def setUp(self):
-        cleanup.CleanUp.setUp(self)
         from Products.ZCatalog.ZCatalog import ZCatalog
         self.zcat = ZCatalog('catalog')
         self.zcat.long_query_time = 0.0
         self._add_indexes()
         for i in range(9):
             obj = dummy(i)
-            self.zcat.catalog_object(obj, str(i))
+            self.zcat.catalog_object(obj)
 
     def _add_indexes(self):
         from Products.PluginIndexes.FieldIndex.FieldIndex import FieldIndex

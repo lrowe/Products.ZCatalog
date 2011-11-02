@@ -76,7 +76,7 @@ The catalog "&dtml-id;" contains <dtml-var results fmt=collection-length thousan
   <dtml-if name="sequence-odd"><tr class="row-normal">
   <dtml-else><tr class="row-hilite"></dtml-if>
     <td align="right" valign="top">
-    <input type="checkbox" NAME="urls:list" VALUE="&dtml-getPath;">
+    <input type="checkbox" NAME="rids:list" VALUE="&dtml-getRID;">
     </td>
     <td align="left" valign="top">&nbsp;</td>
     <td align="left" valign="top">

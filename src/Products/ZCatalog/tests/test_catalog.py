@@ -19,6 +19,9 @@ from Testing.ZopeTestCase.warnhook import WarningsHook
 from itertools import chain
 import random
 
+from zope import component
+from zope import intid
+
 from BTrees.IIBTree import IISet
 import ExtensionClass
 from Products.PluginIndexes.FieldIndex.FieldIndex import FieldIndex
@@ -26,6 +29,8 @@ from Products.PluginIndexes.KeywordIndex.KeywordIndex import KeywordIndex
 from Products.ZCTextIndex.OkapiIndex import OkapiIndex
 from Products.ZCTextIndex.ZCTextIndex import PLexicon
 from Products.ZCTextIndex.ZCTextIndex import ZCTextIndex
+
+from Products.ZCatalog import testing
 
 
 def sort(iterable, reverse=False):
@@ -71,6 +76,8 @@ class objRS(ExtensionClass.Base):
 
 
 class CatalogBase(object):
+
+    layer = testing.layer
 
     def _makeOne(self):
         from Products.ZCatalog.Catalog import Catalog
@@ -190,8 +197,10 @@ class TestCatalog(CatalogBase, unittest.TestCase):
         self._catalog.addColumn('att3')
         self._catalog.addColumn('num')
 
+        self.d = {}
         for x in range(0, self.upper):
-            self._catalog.catalogObject(dummy(self.nums[x]), repr(x))
+            self.d[x] = dummy(self.nums[x])
+            self._catalog.catalogObject(self.d[x], repr(x))
         self._catalog = self._catalog.__of__(dummy('foo'))
 
     # clear
@@ -217,7 +226,7 @@ class TestCatalog(CatalogBase, unittest.TestCase):
 
     def uncatalog(self):
         for x in range(0, self.upper):
-            self._catalog.uncatalogObject(`x`)
+            self._catalog.uncatalogObject(self.d[x])
 
     def testUncatalogFieldIndex(self):
         self.uncatalog()
@@ -235,10 +244,12 @@ class TestCatalog(CatalogBase, unittest.TestCase):
         self.assertEqual(len(a), 0, 'len: %s' % len(a))
 
     def testBadUncatalog(self):
+        intids = component.getUtility(intid.IIntIds, context=self)
+        bad_id = intids._generateId()
         try:
-            self._catalog.uncatalogObject('asdasdasd')
+            self._catalog.uncatalogObject(bad_id)
         except Exception:
-            self.fail('uncatalogObject raised exception on bad uid')
+            self.fail('uncatalogObject raised exception on bad rid')
 
     def testUncatalogTwice(self):
         self._catalog.uncatalogObject(`0`)
@@ -248,7 +259,7 @@ class TestCatalog(CatalogBase, unittest.TestCase):
 
     def testCatalogLength(self):
         for x in range(0, self.upper):
-            self._catalog.uncatalogObject(`x`)
+            self._catalog.uncatalogObject(self.d[x])
         self.assertEqual(len(self._catalog), 0)
 
     def testUniqueValuesForLength(self):
@@ -259,7 +270,6 @@ class TestCatalog(CatalogBase, unittest.TestCase):
         a = self._catalog.uniqueValuesFor('att1')
         self.assertEqual(a[0], 'att1', 'bad content %s' % a[0])
 
-    # hasuid
     # recordify
     # instantiate
     # getMetadataForRID

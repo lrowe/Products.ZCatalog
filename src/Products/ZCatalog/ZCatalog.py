@@ -19,6 +19,10 @@ import sys
 import string
 import time
 import urllib
+import warnings
+
+from zope import component
+from zope import intid
 
 from AccessControl.class_init import InitializeClass
 from AccessControl.Permission import name_trans
@@ -75,9 +79,8 @@ class ZCatalog(Folder, Persistent, Implicit):
 
     ZCatalog does not store references to the objects themselves, but
     rather to a unique identifier that defines how to get to the
-    object.  In Zope, this unique idenfier is the object's relative
-    path to the ZCatalog (since two Zope object's cannot have the same
-    URL, this is an excellent unique qualifier in Zope).
+    object.  In Zope, this unique idenfier is the object's
+    zope.intid.IIntid.
 
     Most of the dirty work is done in the _catalog object, which is an
     instance of the Catalog class.  An interesting feature of this
@@ -203,7 +206,7 @@ class ZCatalog(Folder, Persistent, Implicit):
                 if obj is None and hasattr(self, 'REQUEST'):
                     obj = self.resolve_url(url, REQUEST)
                 if obj is not None:
-                    self.catalog_object(obj, url)
+                    self.catalog_object(obj)
 
         RESPONSE.redirect(
             URL1 +
@@ -211,15 +214,15 @@ class ZCatalog(Folder, Persistent, Implicit):
 
     security.declareProtected(manage_zcatalog_entries,
                               'manage_uncatalogObject')
-    def manage_uncatalogObject(self, REQUEST, RESPONSE, URL1, urls=None):
-        """ removes Zope object(s) 'urls' from catalog """
+    def manage_uncatalogObject(self, REQUEST, RESPONSE, URL1, rids=None):
+        """ removes Zope object(s) 'rids' from catalog """
 
-        if urls:
-            if isinstance(urls, str):
-                urls = (urls, )
+        if rids:
+            if isinstance(rids, str):
+                rids = (rids, )
 
-            for url in urls:
-                self.uncatalog_object(url)
+            for rid in rids:
+                self.uncatalog_object(int(rid))
 
         RESPONSE.redirect(
             URL1 +
@@ -251,12 +254,12 @@ class ZCatalog(Folder, Persistent, Implicit):
         """ re-index everything we can find """
 
         cat = self._catalog
-        paths = cat.paths.values()
+        rids = cat.data.keys()
         if clear:
-            paths = tuple(paths)
+            rids = tuple(rids)
             cat.clear()
 
-        num_objects = len(paths)
+        num_objects = len(self)
         if pghandler:
             pghandler.init('Refreshing catalog: %s' % self.absolute_url(1),
                            num_objects)
@@ -265,17 +268,15 @@ class ZCatalog(Folder, Persistent, Implicit):
             if pghandler:
                 pghandler.report(i)
 
-            p = paths[i]
-            obj = self.resolve_path(p)
-            if obj is None:
-                obj = self.resolve_url(p, self.REQUEST)
+            rid = rids[i]
+            obj = self.getobject(rid)
             if obj is not None:
                 try:
-                    self.catalog_object(obj, p, pghandler=pghandler)
+                    self.catalog_object(obj, rid, pghandler=pghandler)
                 except ConflictError:
                     raise
                 except Exception:
-                    LOG.error('Recataloging object at %s failed' % p,
+                    LOG.error('Recataloging object %r failed' % obj,
                               exc_info=sys.exc_info())
 
         if pghandler:
@@ -412,27 +413,23 @@ class ZCatalog(Folder, Persistent, Implicit):
         if isinstance(name, str):
             name = (name, )
 
-        paths = self._catalog.uids.keys()
-
         i = 0
         if pghandler:
-            pghandler.init('reindexing %s' % name, len(paths))
+            pghandler.init('reindexing %s' % name, len(self))
 
-        for p in paths:
+        for rid in self._catalog.data:
             i += 1
             if pghandler:
                 pghandler.report(i)
 
-            obj = self.resolve_path(p)
-            if obj is None:
-                obj = self.resolve_url(p, REQUEST)
+            obj = self.getobject(rid)
             if obj is None:
                 LOG.error('reindexIndex could not resolve '
-                          'an object from the uid %r.' % p)
+                          'an object from the rid %r.' % rid)
             else:
                 # don't update metadata when only reindexing a single
                 # index via the UI
-                self.catalog_object(obj, p, idxs=name,
+                self.catalog_object(obj, idxs=name,
                                     update_metadata=0, pghandler=pghandler)
 
         if pghandler:
@@ -458,21 +455,9 @@ class ZCatalog(Folder, Persistent, Implicit):
                 '?manage_tabs_message=Reindexing%20Performed')
 
     security.declareProtected(manage_zcatalog_entries, 'catalog_object')
-    def catalog_object(self, obj, uid=None, idxs=None, update_metadata=1,
+    def catalog_object(self, obj, idxs=None, update_metadata=1,
                        pghandler=None):
-        if uid is None:
-            try:
-                uid = obj.getPhysicalPath
-            except AttributeError:
-                raise CatalogError(
-                    "A cataloged object must support the 'getPhysicalPath' "
-                    "method if no unique id is provided when cataloging")
-            else:
-                uid = '/'.join(uid())
-        elif not isinstance(uid, str):
-            raise CatalogError('The object unique id must be a string.')
-
-        self._catalog.catalogObject(obj, uid, None, idxs,
+        self._catalog.catalogObject(obj, None, idxs,
                                     update_metadata=update_metadata)
         # None passed in to catalogObject as third argument indicates
         # that we shouldn't try to commit subtransactions within any
@@ -504,8 +489,8 @@ class ZCatalog(Folder, Persistent, Implicit):
                     pghandler.info('committing subtransaction')
 
     security.declareProtected(manage_zcatalog_entries, 'uncatalog_object')
-    def uncatalog_object(self, uid):
-        self._catalog.uncatalogObject(uid)
+    def uncatalog_object(self, rid):
+        self._catalog.uncatalogObject(rid)
 
     security.declareProtected(search_zcatalog, 'uniqueValuesFor')
     def uniqueValuesFor(self, name):
@@ -515,38 +500,33 @@ class ZCatalog(Folder, Persistent, Implicit):
     security.declareProtected(search_zcatalog, 'getpath')
     def getpath(self, rid):
         # Return the path to a cataloged object given a 'data_record_id_'
-        return self._catalog.paths[rid]
+        path_index = self.Indexes.get('path')
+        if path_index is None or not hasattr(path_index.getEntryForObject):
+            warnings.warn(
+                'No compatible path index available, resolving object '
+                'for rid %r which may be expensive' % rid)
+            return self.getobject(rid).absolute_url_path()
+        return path_index.getEntryForObject(rid)
 
     security.declareProtected(search_zcatalog, 'getrid')
-    def getrid(self, path, default=None):
-        # Return 'data_record_id_' the to a cataloged object given a 'path'
-        return self._catalog.uids.get(path, default)
+    def getrid(self, obj, default=None):
+        if isinstance(obj, str):
+            obj = aq_parent(self).unrestrictedTraverse(obj)
+        intids = component.getUtility(intid.IIntIds, context=self)
+        return intids.queryId(obj, default=default)
 
     security.declareProtected(search_zcatalog, 'getobject')
     def getobject(self, rid, REQUEST=None):
-        # Return a cataloged object given a 'data_record_id_'
-        return aq_parent(self).unrestrictedTraverse(self.getpath(rid))
-
-    security.declareProtected(search_zcatalog, 'getMetadataForUID')
-    def getMetadataForUID(self, uid):
-        # return the correct metadata given the uid, usually the path
-        rid = self._catalog.uids[uid]
-        return self._catalog.getMetadataForRID(rid)
-
-    security.declareProtected(search_zcatalog, 'getIndexDataForUID')
-    def getIndexDataForUID(self, uid):
-        # return the current index contents given the uid, usually the path
-        rid = self._catalog.uids[uid]
-        return self._catalog.getIndexDataForRID(rid)
+        intids = component.getUtility(intid.IIntIds, context=self)
+        return intids.getObject(rid)
 
     security.declareProtected(search_zcatalog, 'getMetadataForRID')
     def getMetadataForRID(self, rid):
-        # return the correct metadata for the cataloged record id
-        return self._catalog.getMetadataForRID(int(rid))
+        return self._catalog.getMetadataForRID(rid)
 
     security.declareProtected(search_zcatalog, 'getIndexDataForRID')
     def getIndexDataForRID(self, rid):
-        # return the current index contents for the specific rid
+        # return the current index contents given the rid, usually the path
         return self._catalog.getIndexDataForRID(rid)
 
     security.declareProtected(search_zcatalog, 'schema')
@@ -772,47 +752,6 @@ class ZCatalog(Folder, Persistent, Implicit):
             return self.unrestrictedTraverse(path)
         except Exception:
             pass
-
-    security.declareProtected(manage_zcatalog_entries, 'manage_normalize_paths')
-    def manage_normalize_paths(self, REQUEST):
-        """Ensure that all catalog paths are full physical paths
-
-        This should only be used with ZCatalogs in which all paths can
-        be resolved with unrestrictedTraverse."""
-
-        paths = self._catalog.paths
-        uids = self._catalog.uids
-        unchanged = 0
-        fixed = []
-        removed = []
-
-        for path, rid in uids.items():
-            ob = None
-            if path[:1] == '/':
-                ob = self.resolve_url(path[1:], REQUEST)
-            if ob is None:
-                ob = self.resolve_url(path, REQUEST)
-                if ob is None:
-                    removed.append(path)
-                    continue
-            ppath = '/'.join(ob.getPhysicalPath())
-            if path != ppath:
-                fixed.append((path, ppath))
-            else:
-                unchanged = unchanged + 1
-
-        for path, ppath in fixed:
-            rid = uids[path]
-            del uids[path]
-            paths[rid] = ppath
-            uids[ppath] = rid
-        for path in removed:
-            self.uncatalog_object(path)
-
-        return MessageDialog(title='Done Normalizing Paths',
-          message='%s paths normalized, %s paths removed, and '
-                  '%s unchanged.' % (len(fixed), len(removed), unchanged),
-          action='./manage_main')
 
     security.declareProtected(manage_zcatalog_entries, 'manage_setProgress')
     def manage_setProgress(self, pgthreshold=0, RESPONSE=None, URL1=None):

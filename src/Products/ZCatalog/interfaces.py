@@ -64,11 +64,8 @@ class IZCatalog(Interface):
     URL, this is an excellent unique qualifier in Zope).
     """
 
-    def catalog_object(obj, uid, idxs=None, update_metadata=1):
-        """Catalogs the object 'obj' with the unique identifier 'uid'.
-
-        The uid must be a physical path, either absolute or relative to
-        the catalog.
+    def catalog_object(obj, idxs=None, update_metadata=1):
+        """Catalogs the object 'obj'.
 
         If provided, idxs specifies the names of indexes to update.
 
@@ -78,11 +75,11 @@ class IZCatalog(Interface):
         is always added for new objects).
         """
 
-    def uncatalog_object(uid):
-        """Uncatalogs the object with the unique identifier 'uid'.
+    def uncatalog_object(rid):
+        """Uncatalogs the object.
 
-        The uid must be a physical path, either absolute or relative to
-        the catalog.
+        The 'rid' argument may be either object or the previously
+        catalogged object's intid.
         """
 
     def uniqueValuesFor(name):
