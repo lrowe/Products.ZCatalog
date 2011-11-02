@@ -298,7 +298,7 @@ class Catalog(Persistent, Acquisition.Implicit, ExtensionClass.Base):
 
         intids = component.getUtility(intid.IIntIds, context=self)
         rid = intids.queryId(object)
-        if rid is None:  # we are inserting new data
+        if rid is None or rid not in self.data:  # we are inserting new data
             rid = self.updateMetadata(object)
             self._length.change(1)
 
