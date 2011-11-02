@@ -272,7 +272,7 @@ class ZCatalog(Folder, Persistent, Implicit):
             obj = self.getobject(rid)
             if obj is not None:
                 try:
-                    self.catalog_object(obj, rid, pghandler=pghandler)
+                    self.catalog_object(obj, pghandler=pghandler)
                 except ConflictError:
                     raise
                 except Exception:
