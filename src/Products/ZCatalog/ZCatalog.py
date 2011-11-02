@@ -513,12 +513,20 @@ class ZCatalog(Folder, Persistent, Implicit):
         if isinstance(obj, str):
             obj = aq_parent(self).unrestrictedTraverse(obj)
         intids = component.getUtility(intid.IIntIds, context=self)
-        return intids.queryId(obj, default=default)
+        rid = intids.queryId(obj, default=default)
+        if rid in self._catalog.data:
+            return rid
+        return default
 
     security.declareProtected(search_zcatalog, 'getobject')
     def getobject(self, rid, REQUEST=None):
         intids = component.getUtility(intid.IIntIds, context=self)
-        return intids.getObject(rid)
+        obj = intids.getObject(rid)
+        if rid not in self._catalog.data:
+            raise AttributeError(
+                'The object for rid %r is not catalogged in %r'
+                % (rid, self))
+        return obj
 
     security.declareProtected(search_zcatalog, 'getMetadataForRID')
     def getMetadataForRID(self, rid):
