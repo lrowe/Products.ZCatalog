@@ -265,12 +265,13 @@ class ZCatalog(Folder, Persistent, Implicit):
             pghandler.init('Refreshing catalog: %s' % self.absolute_url(1),
                            num_objects)
 
+        intids = component.getUtility(intid.IIntIds, context=self)
         for i in xrange(num_objects):
             if pghandler:
                 pghandler.report(i)
 
             rid = rids[i]
-            obj = self.getobject(rid)
+            obj = intids.queryObject(rid)
             if obj is not None:
                 try:
                     self.catalog_object(obj, pghandler=pghandler)
