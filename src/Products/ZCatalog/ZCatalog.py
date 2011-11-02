@@ -255,11 +255,11 @@ class ZCatalog(Folder, Persistent, Implicit):
 
         cat = self._catalog
         rids = cat.data.keys()
+        num_objects = len(self)
         if clear:
             rids = tuple(rids)
             cat.clear()
 
-        num_objects = len(self)
         if pghandler:
             pghandler.init('Refreshing catalog: %s' % self.absolute_url(1),
                            num_objects)
