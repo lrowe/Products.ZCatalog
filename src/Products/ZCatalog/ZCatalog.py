@@ -516,8 +516,8 @@ class ZCatalog(Folder, Persistent, Implicit):
         if isinstance(obj, str):
             obj = aq_parent(self).unrestrictedTraverse(obj)
         intids = component.getUtility(intid.IIntIds, context=self)
-        rid = intids.queryId(obj, default=default)
-        if rid in self._catalog.data:
+        rid = intids.queryId(obj)
+        if rid is not None and rid in self._catalog.data:
             return rid
         return default
 
